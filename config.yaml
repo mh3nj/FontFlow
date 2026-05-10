@@ -1,0 +1,242 @@
+# FontFlow Studio Configuration
+# Edit this file to customize your workflow
+
+# ═══════════════════════════════════════════════════════════════
+# CLASSIFICATION CATEGORIES (Stage A)
+# ═══════════════════════════════════════════════════════════════
+# Map number keys (1-9, 0) to folder names
+
+categories:
+  "1":
+    name: "Sans Serif - Modern"
+    folder: "01_Sans_Modern"
+    color: "#00ff88"
+
+  "2":
+    name: "Sans Serif - Classic"
+    folder: "02_Sans_Classic"
+    color: "#00ccff"
+
+  "3":
+    name: "Serif - Editorial"
+    folder: "03_Serif_Editorial"
+    color: "#ff6b6b"
+
+  "4":
+    name: "Serif - Display"
+    folder: "04_Serif_Display"
+    color: "#ffd93d"
+
+  "5":
+    name: "Display - Geometric"
+    folder: "05_Display_Geometric"
+    color: "#a8e6cf"
+
+  "6":
+    name: "Display - Decorative"
+    folder: "06_Display_Decorative"
+    color: "#ff9ff3"
+
+  "7":
+    name: "Script & Handwritten"
+    folder: "07_Script"
+    color: "#95e1d3"
+
+  "8":
+    name: "Monospace & Code"
+    folder: "08_Monospace"
+    color: "#f38181"
+
+  "9":
+    name: "Arabic & Persian"
+    folder: "09_Arabic_Persian"
+    color: "#aa96da"
+
+  "0":
+    name: "Experimental & Reject"
+    folder: "10_Experimental"
+    color: "#666666"
+
+# ═══════════════════════════════════════════════════════════════
+# SUBCATEGORIES (Stage B)
+# ═══════════════════════════════════════════════════════════════
+# After Stage A classification, these appear for refinement
+
+subcategories:
+  "1":
+    name: "⭐ Favorite - Use Often"
+    folder: "A_Favorite"
+
+  "2":
+    name: "Primary - Professional"
+    folder: "B_Primary"
+
+  "3":
+    name: "Secondary - Occasional"
+    folder: "C_Secondary"
+
+  "4":
+    name: "Archive - Rarely Use"
+    folder: "D_Archive"
+
+  "5":
+    name: "Testing - Evaluate Later"
+    folder: "E_Testing"
+
+# ═══════════════════════════════════════════════════════════════
+# SPECIAL FOLDERS
+# ═══════════════════════════════════════════════════════════════
+
+special_folders:
+  uncertain: "REVIEW_LATER"
+  duplicates: "DUPLICATES_DETECTED"
+
+# ═══════════════════════════════════════════════════════════════
+# PREVIEW TEXT SAMPLES
+# ═══════════════════════════════════════════════════════════════
+
+preview_text:
+  english: |
+    The Quick Brown Fox Jumps Over The Lazy Dog
+    ABCDEFGHIJKLMNOPQRSTUVWXYZ
+    abcdefghijklmnopqrstuvwxyz
+    0123456789 !@#$%^&*()
+
+    Professional typography requires attention to detail and an understanding of how type performs across various contexts. Great typefaces balance form and function.
+
+  persian: |
+    طراحی تایپوگرافی حرفه‌ای
+    نیازمند دقت و توجه به جزئیات است
+
+    ابجد هوز حطی کلمن سعفص قرشت ثخذ ضظغ
+    ۰۱۲۳۴۵۶۷۸۹
+
+    فونت‌های خوب باید در تمام اندازه‌ها و بسترها به خوبی کار کنند.
+
+# ═══════════════════════════════════════════════════════════════
+# UI SETTINGS
+# ═══════════════════════════════════════════════════════════════
+
+ui:
+  # Auto-cycling speed (milliseconds)
+  default_cycle_speed: 1000
+  min_cycle_speed: 200
+  max_cycle_speed: 5000
+  speed_step: 200
+
+  # Window
+  window_title: "FontFlow Studio"
+  default_width: 1600
+  default_height: 1000
+
+  # Preview panel
+  preview_padding: 40
+  english_persian_spacing: 60
+
+# ═══════════════════════════════════════════════════════════════
+# PERFORMANCE
+# ═══════════════════════════════════════════════════════════════
+
+performance:
+  # Font cache size (MB)
+  font_cache_size: 500
+
+  # Max fonts to load in memory
+  max_fonts_in_memory: 100
+
+  # Background loading
+  enable_background_loading: true
+
+  # Autosave interval (seconds)
+  autosave_interval: 30
+
+# ═══════════════════════════════════════════════════════════════
+# DUPLICATE DETECTION
+# ═══════════════════════════════════════════════════════════════
+
+duplicate_detection:
+  enabled: true
+  similarity_threshold: 0.85
+  check_on_startup: false # Can be slow for large libraries
+
+# ═══════════════════════════════════════════════════════════════
+# ADVANCED
+# ═══════════════════════════════════════════════════════════════
+
+advanced:
+  # Logging
+  log_level: "INFO" # DEBUG, INFO, WARNING, ERROR
+
+  # Command history
+  max_undo_history: 100
+
+  # Font file extensions to scan
+  font_extensions:
+    - ".ttf"
+    - ".otf"
+    - ".woff2"
+    - ".ttc"
+
+# ═══════════════════════════════════════════════════════════════
+# KEYBOARD SHORTCUTS (Customizable via Ctrl+K in app)
+# ═══════════════════════════════════════════════════════════════
+# These are defaults - users can change them in the app
+
+keyboard:
+  # Classification
+  classify_1: "1"
+  classify_2: "2"
+  classify_3: "3"
+  classify_4: "4"
+  classify_5: "5"
+  classify_6: "6"
+  classify_7: "7"
+  classify_8: "8"
+  classify_9: "9"
+  classify_0: "0"
+
+  # Flow control
+  skip_family: "Space"
+  mark_uncertain: "/"
+
+  # Navigation
+  next_family: "Right"
+  prev_family: "Left"
+  next_style: "Down"
+  prev_style: "Up"
+
+  # Undo/Redo
+  undo: "Ctrl+Z"
+  redo: "Ctrl+Y"
+
+  # Speed
+  speed_up: "]"
+  slow_down: "["
+
+  # Zoom
+  zoom_in: "Ctrl++"
+  zoom_out: "Ctrl+-"
+  zoom_reset: "Ctrl+0"
+
+  # Modes
+  weight_test: "W"
+  logo_test: "L"
+  persian_stress: "P"
+  comparison: "C"
+
+  # Settings
+  language_settings: "Ctrl+L"
+  shortcut_editor: "Ctrl+K"
+  search: "Ctrl+F"
+  export_report: "Ctrl+E"
+  help: "F1"
+
+# ═══════════════════════════════════════════════════════════════
+# LOGGING SETTINGS
+# ═══════════════════════════════════════════════════════════════
+
+logging:
+  max_size_mb: 10
+  max_age_days: 30
+  max_files: 10
+  compress: true
