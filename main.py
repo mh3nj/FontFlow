@@ -5,9 +5,9 @@ Professional font family curation tool with lazy loading
 
 import sys
 from pathlib import Path
-from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget, QPushButton, QFileDialog, QProgressBar
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget, QPushButton, QFileDialog, QProgressBar, QSplashScreen
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt6.QtGui import QFont, QIcon, QPixmap
 
 from ui.theme import apply_dark_theme, COLORS, FONT_SIZES
 from core.session import SessionManager
@@ -28,16 +28,11 @@ class ScanWorker(QThread):
     
     def run(self):
         try:
-            # Create fast library
             library = FastFontLibrary(self.library_path)
-            
-            # Fast scan (this is fast - just directory listing)
             families = library.fast_scan(
                 progress_callback=lambda cur, total: self.progress.emit(cur, total)
             )
-            
             self.finished_scan.emit(library)
-            
         except Exception as e:
             self.error.emit(str(e))
 
@@ -61,6 +56,28 @@ class FontFlowApp(QMainWindow):
         
         # Setup UI
         self.init_ui()
+        
+        # Set window icon
+        self.set_window_icon()
+    
+    def set_window_icon(self):
+        """Set the window icon for title bar and taskbar"""
+        icon_paths = [
+            Path("resources/icons/favicon.ico"),
+            Path("resources/icons/fontflow.png"),
+            Path("resources/icons/android-chrome-192x192.png"),
+            Path("resources/icons/android-chrome-512x512.png"),
+            Path("resources/icons/apple-touch-icon.png"),
+            Path("resources/icons/favicon-32x32.png"),
+        ]
+        
+        for icon_path in icon_paths:
+            if icon_path.exists():
+                self.setWindowIcon(QIcon(str(icon_path)))
+                print(f"✓ Window icon loaded: {icon_path}")
+                return
+        
+        print("⚠ No icon found in resources/icons/")
     
     def load_config(self) -> dict:
         """Load configuration from config.yaml"""
@@ -299,10 +316,38 @@ class FontFlowApp(QMainWindow):
         event.accept()
 
 
+def show_splash_screen():
+    """Show splash screen while loading"""
+    splash_path = Path("assets/logo/splash.png")
+    if splash_path.exists():
+        pixmap = QPixmap(str(splash_path))
+        splash = QSplashScreen(pixmap)
+        splash.show()
+        QApplication.processEvents()
+        return splash
+    return None
+
+
 def main():
     """Application entry point"""
     # Create Qt application
     app = QApplication(sys.argv)
+    
+    # Set application metadata
+    app.setApplicationName("FontFlow Studio")
+    app.setApplicationVersion("1.0")
+    app.setOrganizationName("FontFlow")
+    
+    # Set application icon (for taskbar/dock)
+    icon_paths = [
+        Path("resources/icons/favicon.ico"),
+        Path("resources/icons/fontflow.png"),
+        Path("resources/icons/android-chrome-192x192.png"),
+    ]
+    for icon_path in icon_paths:
+        if icon_path.exists():
+            app.setWindowIcon(QIcon(str(icon_path)))
+            break
     
     # Set Fusion style for cross-platform consistency
     app.setStyle("Fusion")
@@ -310,9 +355,19 @@ def main():
     # Apply dark theme
     apply_dark_theme(app)
     
+    # Show splash screen
+    splash = show_splash_screen()
+    if splash:
+        splash.show()
+        app.processEvents()
+    
     # Create and show main window
     window = FontFlowApp()
     window.show()
+    
+    # Close splash screen
+    if splash:
+        splash.finish(window)
     
     # Run application
     sys.exit(app.exec())

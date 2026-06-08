@@ -4,9 +4,10 @@ Orchestrates the entire UI with keyboard handling
 """
 
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, 
-                              QLabel, QStatusBar, QSplitter, QMessageBox)
+                              QLabel, QStatusBar, QSplitter, QMessageBox,
+                              QDialog, QPushButton)
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QKeyEvent, QFont
+from PyQt6.QtGui import QKeyEvent, QFont, QPixmap, QIcon
 from pathlib import Path
 import json
 
@@ -36,7 +37,7 @@ class MainWindow(QMainWindow):
         self.engine.progress_updated.connect(self.on_progress_updated)
         self.engine.mode_changed.connect(self.on_mode_changed)
         
-        # Initialize shortcut tooltips FIRST
+        # Initialize shortcut tooltips
         self._init_shortcut_tooltips()
         
         self.init_ui()
@@ -47,12 +48,40 @@ class MainWindow(QMainWindow):
         # Auto-save timer (every 30 seconds)
         self.autosave_timer = QTimer()
         self.autosave_timer.timeout.connect(self.autosave)
-        self.autosave_timer.start(30000)  # 30 seconds
+        self.autosave_timer.start(30000)
+        
+        # Set window icon
+        self._set_window_icon()
+        
+        # Set focus policy to ensure keyboard works
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        
+        print(f"\n🎮 Available categories: {list(self.engine.categories.keys())}")
+        print(f"🎮 Available subcategories: {list(self.engine.subcategories.keys())}")
+    
+    def _set_window_icon(self):
+        """Set window icon for title bar and taskbar"""
+        icon_paths = [
+            Path("resources/icons/favicon.ico"),
+            Path("resources/icons/fontflow.png"),
+            Path("resources/icons/android-chrome-192x192.png"),
+            Path("resources/icons/android-chrome-512x512.png"),
+            Path("resources/icons/apple-touch-icon.png"),
+            Path("resources/icons/favicon-32x32.png"),
+        ]
+        
+        for icon_path in icon_paths:
+            if icon_path.exists():
+                self.setWindowIcon(QIcon(str(icon_path)))
+                print(f"✓ Window icon loaded: {icon_path}")
+                return
+        
+        print("⚠ No icon found in resources/icons/")
     
     def _init_shortcut_tooltips(self):
         """Initialize shortcut tooltips"""
         self.shortcut_tooltips = {
-            "1-5": "Primary category keys",
+            "1-9": "Primary category keys (Stage A)",
             "0": "Experimental category",
             "/": "Mark as uncertain, move to review later",
             "Space": "Skip current font without classifying",
@@ -63,15 +92,16 @@ class MainWindow(QMainWindow):
             "[/]": "Decrease/Increase auto-cycle speed",
             "Ctrl+Scroll": "Zoom in/out (hold Ctrl and scroll)",
             "Ctrl+0": "Reset zoom to 100%",
-            "C": "Toggle comparison mode (side-by-side view)",
+            "C": "Toggle comparison mode",
             "W": "Toggle weight stress test mode",
             "L": "Toggle logo test mode",
             "P": "Toggle Persian shaping stress mode",
-            "Ctrl+L": "Open language selection settings",
+            "Ctrl+L": "Open language settings",
             "Ctrl+K": "Open keyboard shortcut editor",
             "Ctrl+F": "Open search panel",
-            "Ctrl+E": "Export HTML classification report",
-            "F1": "Show this help dialog",
+            "Ctrl+E": "Export HTML report",
+            "Ctrl+I": "About FontFlow",
+            "F1": "Show help dialog",
         }
     
     def init_ui(self):
@@ -88,34 +118,31 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        # Top bar (library info)
+        # Top bar
         self.create_top_bar(main_layout)
         
-        # Splitter for preview + comparison + search
+        # Splitter
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(False)
         
-        # Left: Preview panel
+        # Preview panel
         self.preview_panel = PreviewPanel()
         self.splitter.addWidget(self.preview_panel)
         
-        # Right: Comparison panel (hidden by default)
+        # Comparison panel
         self.comparison_panel = ComparisonPanel(self.preview_panel.font_loader)
         self.comparison_panel.setVisible(False)
         self.splitter.addWidget(self.comparison_panel)
         
-        # Search panel (created later, hidden by default)
         self.search_panel = None
-        
-        # Set initial sizes
         self.splitter.setSizes([1000, 0])
         
         main_layout.addWidget(self.splitter, stretch=1)
         
-        # HUD overlay (positioned absolutely on preview panel)
+        # HUD
         self.hud = IntelligenceHUD()
         
-        # Bottom bar (keyboard hints)
+        # Bottom bar
         self.create_bottom_bar(main_layout)
         
         # Status bar
@@ -129,8 +156,7 @@ class MainWindow(QMainWindow):
             }}
         """)
         
-        # Set initial status message
-        self.status_bar.showMessage("Ready — Press F1 for help", 3000)
+        self.status_bar.showMessage("Ready — Press 1-9 to classify, F1 for help", 4000)
     
     def create_top_bar(self, parent_layout):
         """Create the top information bar"""
@@ -146,7 +172,6 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(top_bar)
         layout.setContentsMargins(20, 0, 20, 0)
         
-        # Library path
         self.library_label = QLabel(f"⚡ Library: {self.engine.session.library_root}")
         self.library_label.setFont(QFont("Consolas", FONT_SIZES['micro']))
         self.library_label.setStyleSheet(f"color: {COLORS['text_secondary']}; border: none;")
@@ -155,21 +180,18 @@ class MainWindow(QMainWindow):
         
         layout.addStretch()
         
-        # Stage indicator
         self.stage_indicator = QLabel("Stage A")
         self.stage_indicator.setFont(QFont("Segoe UI", FONT_SIZES['small'], QFont.Weight.Bold))
         self.stage_indicator.setStyleSheet(f"color: {COLORS['accent_primary']}; border: none;")
         self.stage_indicator.setToolTip("Current classification stage (Primary or Refine)")
         layout.addWidget(self.stage_indicator)
         
-        # Speed indicator
         self.speed_indicator = QLabel(f"⏱ {self.engine.cycle_speed_ms}ms")
         self.speed_indicator.setFont(QFont("Consolas", FONT_SIZES['micro']))
         self.speed_indicator.setStyleSheet(f"color: {COLORS['text_dim']}; border: none; margin-left: 20px;")
         self.speed_indicator.setToolTip("Auto-cycle speed (use [/] to adjust)")
         layout.addWidget(self.speed_indicator)
         
-        # Progress
         self.progress_indicator = QLabel(f"0 / {self.engine.total_families}")
         self.progress_indicator.setFont(QFont("Consolas", FONT_SIZES['micro']))
         self.progress_indicator.setStyleSheet(f"color: {COLORS['text_dim']}; border: none; margin-left: 20px;")
@@ -179,9 +201,11 @@ class MainWindow(QMainWindow):
         parent_layout.addWidget(top_bar)
     
     def create_bottom_bar(self, parent_layout):
-        """Create the bottom keyboard hints bar with organized grid layout"""
+        """Create the bottom keyboard hints bar"""
+        from PyQt6.QtWidgets import QGridLayout
+        
         bottom_bar = QWidget()
-        bottom_bar.setMinimumHeight(110)
+        bottom_bar.setMinimumHeight(120)
         bottom_bar.setStyleSheet(f"""
             QWidget {{
                 background-color: {COLORS['bg_secondary']};
@@ -189,7 +213,6 @@ class MainWindow(QMainWindow):
             }}
         """)
         
-        # Main layout
         main_layout = QVBoxLayout(bottom_bar)
         main_layout.setContentsMargins(20, 8, 20, 8)
         main_layout.setSpacing(8)
@@ -203,42 +226,32 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(title)
         
         # Grid for shortcuts
-        from PyQt6.QtWidgets import QGridLayout
-        
         grid = QGridLayout()
         grid.setSpacing(8)
         grid.setHorizontalSpacing(20)
         
-        # Define shortcut groups (key, description, tooltip_key)
         shortcuts = [
-            # Row 1: Classification
-            ("1-5", "Primary Categories", "1-5"),
+            ("1-9", "Categories (A)", "1-9"),
             ("0", "Experimental", "0"),
             ("/", "Uncertain", "/"),
             ("Space", "Skip", "Space"),
-            
-            # Row 2: Navigation
             ("←/→", "Prev/Next Family", "←/→"),
             ("↑/↓", "Prev/Next Style", "↑/↓"),
             ("Ctrl+Z", "Undo", "Ctrl+Z"),
             ("Ctrl+Y", "Redo", "Ctrl+Y"),
-            
-            # Row 3: Speed & Zoom
             ("[/]", "Speed -/+", "[/]"),
             ("Ctrl+Scroll", "Zoom", "Ctrl+Scroll"),
             ("Ctrl+0", "Reset Zoom", "Ctrl+0"),
-            
-            # Row 4: Modes
             ("C", "Compare", "C"),
             ("W", "Weight Test", "W"),
             ("L", "Logo Test", "L"),
             ("P", "Persian Stress", "P"),
-            
-            # Row 5: Settings
             ("Ctrl+L", "Language", "Ctrl+L"),
             ("Ctrl+K", "Shortcuts", "Ctrl+K"),
             ("Ctrl+F", "Search", "Ctrl+F"),
             ("Ctrl+E", "Report", "Ctrl+E"),
+            ("Ctrl+I", "About", "Ctrl+I"),
+            ("F1", "Help", "F1"),
         ]
         
         row = 0
@@ -246,7 +259,6 @@ class MainWindow(QMainWindow):
         max_cols = 4
         
         for key, description, tooltip_key in shortcuts:
-            # Key badge
             key_label = QLabel(key)
             key_label.setFont(QFont("Consolas", FONT_SIZES['micro'], QFont.Weight.Bold))
             key_label.setStyleSheet(f"""
@@ -260,12 +272,10 @@ class MainWindow(QMainWindow):
             key_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             key_label.setToolTip(self.shortcut_tooltips.get(tooltip_key, description))
             
-            # Description label
             desc_label = QLabel(description)
             desc_label.setFont(QFont("Segoe UI", FONT_SIZES['micro']))
             desc_label.setStyleSheet(f"color: {COLORS['text_dim']}; border: none;")
             
-            # Container for this shortcut
             container = QWidget()
             container_layout = QHBoxLayout(container)
             container_layout.setContentsMargins(0, 0, 0, 0)
@@ -283,20 +293,38 @@ class MainWindow(QMainWindow):
         
         main_layout.addLayout(grid)
         
-        # Hint about customization
-        hint_label = QLabel("💡 Tip: Press Ctrl+K to customize any shortcut  |  Ctrl+F to search fonts  |  Ctrl+E to export report  |  F1 for help")
-        hint_label.setFont(QFont("Segoe UI", FONT_SIZES['micro']))
-        hint_label.setStyleSheet(f"color: {COLORS['text_dim']}; border: none;")
-        hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        main_layout.addWidget(hint_label)
+        # Stage-specific hints
+        self.stage_hints_label = QLabel()
+        self.stage_hints_label.setFont(QFont("Segoe UI", FONT_SIZES['micro']))
+        self.stage_hints_label.setStyleSheet(f"color: {COLORS['accent_primary']}; border: none;")
+        self.stage_hints_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(self.stage_hints_label)
+        
+        self._update_stage_hints()
         
         parent_layout.addWidget(bottom_bar)
     
+    def _update_stage_hints(self):
+        """Update stage-specific hints"""
+        if hasattr(self.engine, 'session') and self.engine.session.current_stage == "A":
+            hints = []
+            for key in ['1', '2', '3', '4', '5']:
+                if key in self.engine.categories:
+                    cat = self.engine.categories[key]
+                    hints.append(f"[{key}] {cat.name}")
+            self.stage_hints_label.setText("  •  ".join(hints) + "  •  ...")
+            self.stage_hints_label.setToolTip("Press 1-9 to choose category")
+        else:
+            hints = []
+            for key in ['1', '2', '3', '4', '5']:
+                if key in self.engine.subcategories:
+                    subcat = self.engine.subcategories[key]
+                    hints.append(f"[{key}] {subcat.name}")
+            self.stage_hints_label.setText("  •  ".join(hints))
+            self.stage_hints_label.setToolTip("Press 1-5 to choose subcategory and MOVE files")
+    
     def resizeEvent(self, event):
-        """Position HUD when window resizes"""
         super().resizeEvent(event)
-        
-        # Position HUD in top-right of preview panel
         if hasattr(self, 'preview_panel') and hasattr(self, 'hud'):
             hud_x = self.preview_panel.width() - self.hud.width() - 20
             hud_y = 20
@@ -305,9 +333,7 @@ class MainWindow(QMainWindow):
             self.hud.raise_()
 
     def wheelEvent(self, event):
-        """Handle mouse wheel for zoom (with Ctrl key)"""
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            # Ctrl + Scroll = Zoom
             delta = event.angleDelta().y()
             if delta > 0:
                 self.preview_panel.zoom_in()
@@ -322,56 +348,32 @@ class MainWindow(QMainWindow):
     def show_shortcut_editor(self):
         """Open the keyboard shortcut editor"""
         from ui.shortcut_editor import ShortcutEditor
-        
         editor = ShortcutEditor(self)
-        
-        def on_shortcuts_changed(shortcuts):
-            print("✅ Shortcuts updated - restart recommended for full effect")
-            self.status_bar.showMessage("Shortcuts saved! Restart app for full effect.", 3000)
-        
-        editor.shortcuts_changed.connect(on_shortcuts_changed)
+        editor.shortcuts_changed.connect(lambda s: self.status_bar.showMessage("Shortcuts saved! Restart app.", 3000))
         editor.exec()
     
     def show_search(self):
         """Show search panel"""
         if not hasattr(self, 'search_panel') or self.search_panel is None:
-            # Create search panel with all families
             all_families = []
-            failed_families = []
-            
-            self.status_bar.showMessage("Loading fonts for search...", 2000)
-            
             for i in range(len(self.engine.library.families)):
                 try:
                     family = self.engine.library.get_family(i, parse=True)
                     if family:
                         all_families.append(family)
-                    else:
-                        failed_families.append(i)
-                except Exception as e:
-                    failed_families.append(i)
-            
-            if failed_families:
-                print(f"⚠ Skipped {len(failed_families)} families with parsing errors")
+                except Exception:
+                    pass
             
             if not all_families:
-                QMessageBox.warning(
-                    self,
-                    "No Fonts Found",
-                    "No valid font families found for search.\n\n"
-                    "This may happen if your font library contains only corrupt or unsupported fonts."
-                )
+                QMessageBox.warning(self, "No Fonts Found", "No valid font families found for search.")
                 return
             
             self.search_panel = SearchPanel(all_families, self)
             self.search_panel.family_selected.connect(self.engine.jump_to_family)
-            
-            # Add to right side
             self.splitter.addWidget(self.search_panel)
             self.search_panel.hide()
         
         self.search_panel.show_search()
-        self.status_bar.showMessage("Search panel open - type to filter fonts", 2000)
     
     def export_report(self):
         """Export classification report as HTML"""
@@ -379,36 +381,22 @@ class MainWindow(QMainWindow):
         from utils.report_generator import ReportGenerator
         from datetime import datetime
         
-        # Get save location
         default_name = f"fontflow_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save Report",
-            str(Path.home() / default_name),
-            "HTML Files (*.html)"
+            self, "Save Report", str(Path.home() / default_name), "HTML Files (*.html)"
         )
         
         if not file_path:
             return
         
-        # Show progress dialog
-        progress_msg = QMessageBox()
-        progress_msg.setWindowTitle("Generating Report")
-        progress_msg.setText("Scanning font families...")
-        progress_msg.setStandardButtons(QMessageBox.StandardButton.NoButton)
-        progress_msg.show()
-        
-        # Collect all families
         all_families = []
         for i in range(len(self.engine.library.families)):
             try:
                 family = self.engine.library.get_family(i, parse=True)
                 if family:
                     all_families.append(family)
-            except Exception as e:
-                print(f"⚠ Skipping family {i} for report: {e}")
-        
-        progress_msg.setText(f"Generating report for {len(all_families)} families...")
+            except Exception:
+                pass
         
         try:
             generator = ReportGenerator(
@@ -416,28 +404,125 @@ class MainWindow(QMainWindow):
                 families=all_families,
                 session_data={}
             )
-            
             output_path = generator.generate_html_report(Path(file_path))
-            progress_msg.accept()
-            
-            QMessageBox.information(
-                self,
-                "Report Complete",
-                f"✅ Report saved successfully!\n\n📍 Location: {output_path}\n\n📊 {len(all_families)} families analyzed\n✓ {len([f for f in all_families if hasattr(f, 'classified') and f.classified])} classified"
-            )
-            
+            QMessageBox.information(self, "Report Complete", f"Report saved to:\n{output_path}")
             self.status_bar.showMessage(f"Report exported: {output_path}", 5000)
-            
         except Exception as e:
-            progress_msg.accept()
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Failed to generate report:\n\n{str(e)}"
-            )
+            QMessageBox.critical(self, "Error", f"Failed to generate report:\n{str(e)}")
+    
+    def show_about(self):
+        """Show about dialog with logo"""
+        about = QDialog(self)
+        about.setWindowTitle("About FontFlow Studio")
+        about.setFixedSize(500, 450)
+        about.setStyleSheet(f"""
+            QDialog {{
+                background-color: {COLORS['bg_secondary']};
+            }}
+        """)
+        
+        layout = QVBoxLayout(about)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(16)
+        layout.setContentsMargins(30, 30, 30, 30)
+        
+        # Logo
+        logo_paths = [
+            Path("assets/logo/logo-dark.png"),
+            Path("assets/logo/logo-light.png"),
+            Path("resources/icons/fontflow-128.png"),
+            Path("resources/icons/fontflow.png"),
+        ]
+        
+        logo_found = False
+        for logo_path in logo_paths:
+            if logo_path.exists():
+                pixmap = QPixmap(str(logo_path))
+                if not pixmap.isNull():
+                    scaled = pixmap.scaled(128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    logo_label = QLabel()
+                    logo_label.setPixmap(scaled)
+                    logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    layout.addWidget(logo_label)
+                    logo_found = True
+                    break
+        
+        if not logo_found:
+            # Fallback text icon
+            icon_label = QLabel("🎨")
+            icon_label.setFont(QFont("Segoe UI", 64))
+            icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(icon_label)
+        
+        # Title
+        title = QLabel("FontFlow Studio")
+        title.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
+        title.setStyleSheet(f"color: {COLORS['accent_primary']};")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+        
+        # Version
+        version = QLabel("Version 1.0")
+        version.setFont(QFont("Segoe UI", 12))
+        version.setStyleSheet(f"color: {COLORS['text_secondary']};")
+        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(version)
+        
+        # Description
+        desc = QLabel(
+            "Professional Font Family Curation Tool\n\n"
+            "Keyboard-driven · Persian-ready · Crash-proof\n\n"
+            "Organize thousands of fonts in minutes."
+        )
+        desc.setFont(QFont("Segoe UI", 11))
+        desc.setStyleSheet(f"color: {COLORS['text_primary']};")
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+        
+        # Separator
+        separator = QWidget()
+        separator.setFixedHeight(1)
+        separator.setStyleSheet(f"background-color: {COLORS['border']};")
+        layout.addWidget(separator)
+        
+        # Credits
+        credits = QLabel("© 2026 Mohsen Jafari\nBuilt with PyQt6 and love")
+        credits.setFont(QFont("Segoe UI", 10))
+        credits.setStyleSheet(f"color: {COLORS['text_dim']};")
+        credits.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(credits)
+        
+        # Website link
+        website = QLabel('<a href="https://github.com/mh3nj/fontflow">github.com/mh3nj/fontflow</a>')
+        website.setOpenExternalLinks(True)
+        website.setStyleSheet(f"color: {COLORS['accent_primary']}; border: none;")
+        website.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(website)
+        
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['accent_primary']};
+                color: {COLORS['bg_primary']};
+                border: none;
+                border-radius: 6px;
+                padding: 10px 30px;
+                font-weight: bold;
+                min-width: 100px;
+            }}
+            QPushButton:hover {{
+                background-color: {COLORS['accent_dim']};
+            }}
+        """)
+        close_btn.clicked.connect(about.accept)
+        layout.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        about.exec()
     
     # ═══════════════════════════════════════════════════════════════
-    # WINDOW STATE MANAGEMENT
+    # WINDOW STATE
     # ═══════════════════════════════════════════════════════════════
     
     def _load_window_geometry(self):
@@ -459,7 +544,6 @@ class MainWindow(QMainWindow):
         try:
             config_path = Path("data/window_state.json")
             config_path.parent.mkdir(parents=True, exist_ok=True)
-            
             state = {
                 'width': self.width(),
                 'height': self.height(),
@@ -467,7 +551,6 @@ class MainWindow(QMainWindow):
                 'y': self.y(),
                 'maximized': self.isMaximized()
             }
-            
             with open(config_path, 'w') as f:
                 json.dump(state, f, indent=2)
         except Exception as e:
@@ -485,49 +568,84 @@ class MainWindow(QMainWindow):
         # F1 for help
         if key == Qt.Key.Key_F1:
             help_text = """
-            <b>🎨 FontFlow Studio Help</b><br><br>
-            <b>📋 Classification:</b><br>
-            • 1-9,0 - Classify font into categories<br>
+            <b>FontFlow Studio Help</b><br><br>
+            <b>Classification:</b><br>
+            • 1-9 - Choose category (Stage A)<br>
+            • Then 1-5 - Choose subcategory (Stage B) - FILES MOVE!<br>
             • Space - Skip current font<br>
             • / - Mark as uncertain (moves to REVIEW_LATER)<br><br>
-            <b>🎮 Navigation:</b><br>
+            <b>Navigation:</b><br>
             • ←/→ - Previous/Next family<br>
             • ↑/↓ - Manual style cycle<br>
             • Ctrl+Z/Y - Undo/Redo<br><br>
-            <b>👁️ Viewing:</b><br>
+            <b>Viewing:</b><br>
             • Ctrl+Scroll - Zoom in/out<br>
             • Ctrl+0 - Reset zoom<br>
             • [/] - Adjust auto-cycle speed<br><br>
-            <b>🎨 Special Modes:</b><br>
+            <b>Modes:</b><br>
             • C - Comparison mode<br>
             • W - Weight stress test<br>
             • L - Logo test<br>
             • P - Persian stress test<br><br>
-            <b>⚙️ Settings:</b><br>
+            <b>Settings:</b><br>
             • Ctrl+K - Customize shortcuts<br>
             • Ctrl+L - Language settings<br>
             • Ctrl+F - Search fonts<br>
             • Ctrl+E - Export report<br>
+            • Ctrl+I - About FontFlow<br>
             """
             QMessageBox.information(self, "FontFlow Help", help_text)
             return
         
         # Classification keys (1-9, 0)
-        if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
-            category_key = str(key - Qt.Key.Key_1 + 1)
-            self.engine.classify(category_key)
+        if key == Qt.Key.Key_1:
+            self.engine.classify("1")
+            self._update_stage_hints()
             return
-        
+        if key == Qt.Key.Key_2:
+            self.engine.classify("2")
+            self._update_stage_hints()
+            return
+        if key == Qt.Key.Key_3:
+            self.engine.classify("3")
+            self._update_stage_hints()
+            return
+        if key == Qt.Key.Key_4:
+            self.engine.classify("4")
+            self._update_stage_hints()
+            return
+        if key == Qt.Key.Key_5:
+            self.engine.classify("5")
+            self._update_stage_hints()
+            return
+        if key == Qt.Key.Key_6:
+            self.engine.classify("6")
+            self._update_stage_hints()
+            return
+        if key == Qt.Key.Key_7:
+            self.engine.classify("7")
+            self._update_stage_hints()
+            return
+        if key == Qt.Key.Key_8:
+            self.engine.classify("8")
+            self._update_stage_hints()
+            return
+        if key == Qt.Key.Key_9:
+            self.engine.classify("9")
+            self._update_stage_hints()
+            return
         if key == Qt.Key.Key_0:
             self.engine.classify("0")
+            self._update_stage_hints()
             return
         
-        # Flow control
+        # Space - Skip
         if key == Qt.Key.Key_Space:
             self.engine.skip_family()
             self.status_bar.showMessage("⏭ Skipped", 500)
             return
         
+        # Slash - Uncertain
         if key == Qt.Key.Key_Slash:
             self.engine.mark_uncertain()
             self.status_bar.showMessage("⚠ Marked for review", 500)
@@ -549,30 +667,26 @@ class MainWindow(QMainWindow):
             self.engine.slow_down()
             self.status_bar.showMessage(f"🐢 Speed: {self.engine.cycle_speed_ms}ms", 1000)
             return
-        
         if key == Qt.Key.Key_BracketRight:
             self.engine.speed_up()
             self.status_bar.showMessage(f"🐇 Speed: {self.engine.cycle_speed_ms}ms", 1000)
             return
         
-        # Navigation
+        # Navigation arrows
         if key == Qt.Key.Key_Left:
             self.engine.prev_family()
             return
-        
         if key == Qt.Key.Key_Right:
             self.engine.next_family()
             return
-        
         if key == Qt.Key.Key_Up:
             self.engine.prev_style()
             return
-        
         if key == Qt.Key.Key_Down:
             self.engine.next_style()
             return
         
-        # ZOOM with Ctrl + / = and Ctrl + -
+        # Zoom with Ctrl
         if modifiers & Qt.KeyboardModifier.ControlModifier:
             if key == Qt.Key.Key_Equal or key == Qt.Key.Key_Plus:
                 self.preview_panel.zoom_in()
@@ -591,47 +705,41 @@ class MainWindow(QMainWindow):
         if key == Qt.Key.Key_C:
             self.engine.toggle_comparison_mode()
             return
-        
         if key == Qt.Key.Key_W:
             self.engine.toggle_weight_test_mode()
             return
-        
         if key == Qt.Key.Key_L:
             self.engine.toggle_logo_test_mode()
             return
-        
         if key == Qt.Key.Key_P:
             self.engine.toggle_persian_stress_mode()
             return
         
-        # Language settings (Ctrl+L)
-        if key == Qt.Key.Key_L and modifiers & Qt.KeyboardModifier.ControlModifier:
-            self.preview_panel.show_language_settings()
-            return
-
-        # Shortcut editor (Ctrl+K)
-        if key == Qt.Key.Key_K and modifiers & Qt.KeyboardModifier.ControlModifier:
-            self.show_shortcut_editor()
-            return
+        # Settings with Ctrl
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            if key == Qt.Key.Key_L:
+                self.preview_panel.show_language_settings()
+                return
+            if key == Qt.Key.Key_K:
+                self.show_shortcut_editor()
+                return
+            if key == Qt.Key.Key_F:
+                self.show_search()
+                return
+            if key == Qt.Key.Key_E:
+                self.export_report()
+                return
+            if key == Qt.Key.Key_I:
+                self.show_about()
+                return
         
-        # Search (Ctrl+F)
-        if key == Qt.Key.Key_F and modifiers & Qt.KeyboardModifier.ControlModifier:
-            self.show_search()
-            return
-        
-        # Export report (Ctrl+E)
-        if key == Qt.Key.Key_E and modifiers & Qt.KeyboardModifier.ControlModifier:
-            self.export_report()
-            return
-        
-        # Escape to close search panel
+        # Escape to close search
         if key == Qt.Key.Key_Escape:
             if hasattr(self, 'search_panel') and self.search_panel and self.search_panel.isVisible():
                 self.search_panel.hide()
                 self.status_bar.showMessage("Search closed", 1000)
                 return
         
-        # Pass to parent if not handled
         super().keyPressEvent(event)
     
     # ═══════════════════════════════════════════════════════════════
@@ -643,14 +751,16 @@ class MainWindow(QMainWindow):
         self.preview_panel.set_family(family)
         self.hud.update_family(family)
         
-        # Update search panel current index
         if hasattr(self, 'search_panel') and self.search_panel:
             self.search_panel.current_index = self.engine.current_family_index
         
-        # Update window title with current family
         self.setWindowTitle(f"FontFlow Studio — {family.family_name} ({self.engine.current_family_index + 1}/{self.engine.total_families})")
         
-        self.status_bar.showMessage(f"📁 Viewing: {family.family_name} ({family.style_count} styles)", 2000)
+        stage = self.engine.session.current_stage
+        if stage == "A":
+            self.status_bar.showMessage(f"📁 {family.family_name} - Press 1-9 to choose category", 3000)
+        else:
+            self.status_bar.showMessage(f"📁 {family.family_name} - Press 1-5 to choose subcategory", 3000)
     
     def on_style_changed(self):
         """Handle style cycle from engine"""
@@ -666,26 +776,12 @@ class MainWindow(QMainWindow):
         stage_text = "📋 Stage A: Primary" if stage == "A" else "🎯 Stage B: Refine"
         self.stage_indicator.setText(stage_text)
         self.hud.update_stage(stage)
+        self._update_stage_hints()
         
-        # Update bottom hints based on stage
         if stage == "A":
-            hints = []
-            for key in ['1', '2', '3', '4', '5']:
-                if key in self.engine.categories:
-                    cat = self.engine.categories[key]
-                    hints.append(f"[{key}] {cat.name}")
+            self.status_bar.showMessage("Stage A: Press 1-9 to choose category", 2000)
         else:
-            hints = []
-            for key in ['1', '2', '3', '4', '5']:
-                if key in self.engine.subcategories:
-                    subcat = self.engine.subcategories[key]
-                    hints.append(f"[{key}] {subcat.name}")
-        
-        hints.append("[/] Uncertain")
-        hints.append("[Space] Skip")
-        hint_text = "  •  ".join(hints)
-        if hasattr(self, 'hints_label'):
-            self.hints_label.setText(hint_text)
+            self.status_bar.showMessage("Stage B: Press 1-5 to choose subcategory (files will move)", 3000)
     
     def on_progress_updated(self, current: int, total: int):
         """Handle progress update from engine"""
@@ -696,38 +792,22 @@ class MainWindow(QMainWindow):
     def on_mode_changed(self, mode: str, enabled: bool):
         """Handle mode toggle from engine"""
         if mode == "comparison":
-            # Toggle comparison panel visibility
             self.comparison_panel.setVisible(enabled)
             if enabled:
                 self.splitter.setSizes([700, 900])
-                self.status_bar.showMessage("🔍 Comparison mode: ON - Select a folder to compare", 3000)
+                self.status_bar.showMessage("Comparison mode: ON", 3000)
             else:
                 self.splitter.setSizes([1000, 0])
                 self.status_bar.showMessage("Comparison mode: OFF", 2000)
-        
         elif mode == "weight":
-            if enabled:
-                self.preview_panel.set_mode("weight")
-                self.status_bar.showMessage("💪 Weight Stress Test: ON", 2000)
-            else:
-                self.preview_panel.set_mode("normal")
-                self.status_bar.showMessage("Normal mode", 2000)
-        
+            self.preview_panel.set_mode("weight" if enabled else "normal")
+            self.status_bar.showMessage("Weight Stress Test: ON" if enabled else "Normal mode", 2000)
         elif mode == "logo":
-            if enabled:
-                self.preview_panel.set_mode("logo")
-                self.status_bar.showMessage("🏷️ Logo Test: ON", 2000)
-            else:
-                self.preview_panel.set_mode("normal")
-                self.status_bar.showMessage("Normal mode", 2000)
-        
+            self.preview_panel.set_mode("logo" if enabled else "normal")
+            self.status_bar.showMessage("Logo Test: ON" if enabled else "Normal mode", 2000)
         elif mode == "persian":
-            if enabled:
-                self.preview_panel.set_mode("persian")
-                self.status_bar.showMessage("🕌 Persian Shaping Stress: ON", 2000)
-            else:
-                self.preview_panel.set_mode("normal")
-                self.status_bar.showMessage("Normal mode", 2000)
+            self.preview_panel.set_mode("persian" if enabled else "normal")
+            self.status_bar.showMessage("Persian Stress: ON" if enabled else "Normal mode", 2000)
     
     # ═══════════════════════════════════════════════════════════════
     # SESSION MANAGEMENT
