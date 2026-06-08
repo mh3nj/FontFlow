@@ -8,6 +8,7 @@ from typing import Optional, Callable
 from PyQt6.QtCore import QTimer, QObject, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 import time
+import shutil
 
 from models.font_family import FontFamily
 from models.classification import Stage, Category, CommandStack, ClassificationAction
@@ -279,25 +280,31 @@ class FontFlowEngine(QObject):
         family = self.current_family
         
         if not family:
+            print("⚠ No current family to classify")
             return
+        
+        print(f"\n🎯 CLASSIFY: Key={category_key}, Stage={self.session.current_stage}")
+        print(f"   Family: {family.family_name}")
         
         # Determine which stage we're in
         if self.session.current_stage == "A":
             # Stage A: Primary classification
             if category_key not in self.categories:
-                print(f"Invalid category key: {category_key}")
+                print(f"❌ Invalid category key: {category_key}")
+                print(f"   Available: {list(self.categories.keys())}")
                 return
             
             category = self.categories[category_key]
             target_path = Path(self.session.library_root) / category.folder
             
-            print(f"Stage A: Classifying '{family.family_name}' → {category.name}")
+            print(f"📁 Stage A: Classifying '{family.family_name}' → {category.name}")
+            print(f"   Target path: {target_path}")
             
             # Log the action
             self.logger.log_classification(
                 family_name=family.family_name,
-                from_path=family.source_folder,
-                to_path=target_path,
+                from_path=str(family.source_folder),
+                to_path=str(target_path),
                 stage="A",
                 category=category_key
             )
@@ -309,77 +316,135 @@ class FontFlowEngine(QObject):
             # Store the selected category for Stage B
             self.session.temp_stage_a_category = category.folder
             
+            print(f"✅ Stage A complete. Now in Stage B. Press 1-5 to choose subcategory.")
+            
         else:
             # Stage B: Subcategory refinement + ACTUAL FILE MOVE
             if category_key not in self.subcategories:
-                print(f"Invalid subcategory key: {category_key}")
+                print(f"❌ Invalid subcategory key: {category_key}")
+                print(f"   Available: {list(self.subcategories.keys())}")
                 return
             
             subcategory = self.subcategories[category_key]
             
             # Build target path: library_root / category_folder / subcategory_folder
-            parent_folder = getattr(self.session, 'temp_stage_a_category', 'classified')
+            parent_folder = getattr(self.session, 'temp_stage_a_category', None)
+            
+            if not parent_folder:
+                print("❌ No category selected in Stage A. Something went wrong.")
+                self.session.current_stage = "A"
+                self.stage_changed.emit("A")
+                return
+            
             target_path = Path(self.session.library_root) / parent_folder / subcategory.folder
             
-            print(f"Stage B: Moving '{family.family_name}' → {target_path}")
+            print(f"📁 Stage B: Moving '{family.family_name}'")
+            print(f"   From: {family.source_folder}")
+            print(f"   To: {target_path}")
             
-            # ACTUAL FILE OPERATION
-            success, message = self.file_ops.move_family(
-                family=family,
-                target_dir=target_path,
-                on_progress=lambda cur, tot, name: print(f"  Moving {cur}/{tot}: {name}")
-            )
+            # Ensure target directory exists
+            target_path.mkdir(parents=True, exist_ok=True)
             
-            if success:
-                print(f"✓ {message}")
-                
-                # Log the action
-                self.logger.log_classification(
-                    family_name=family.family_name,
-                    from_path=family.source_folder,
-                    to_path=target_path,
-                    stage="B",
-                    category=getattr(self.session, 'temp_stage_a_category', ''),
-                    subcategory=category_key
-                )
-                
-                # Mark as completed
-                self.session.completed_families.add(family.family_name)
-                
-                # Create action for undo (files already moved)
-                action = ClassificationAction(
-                    timestamp=time.time(),
-                    family_name=family.family_name,
-                    from_path=family.source_folder,
-                    to_path=target_path,
-                    stage=Stage.B,
-                    category_key=category_key,
-                )
-                # Add to history (but don't execute, already done)
-                self.command_stack.commands.append(action)
-                self.command_stack.current_index += 1
-                
-                # Move to Stage A for next family
+            # COLLECT ALL FONT FILES FOR THIS FAMILY
+            font_files = []
+            for style in family.styles:
+                if style.path.exists():
+                    font_files.append(style.path)
+                else:
+                    print(f"   ⚠ Missing file: {style.path}")
+            
+            if not font_files:
+                print("❌ No font files found to move")
                 self.session.current_stage = "A"
                 self.stage_changed.emit("A")
+                return
+            
+            print(f"   Moving {len(font_files)} file(s)...")
+            
+            # MOVE EACH FILE
+            moved_files = []
+            failed_files = []
+            
+            for source_path in font_files:
+                dest_path = target_path / source_path.name
                 
-                # Clean up temp data
-                if hasattr(self.session, 'temp_stage_a_category'):
-                    delattr(self.session, 'temp_stage_a_category')
+                # Check for conflicts
+                if dest_path.exists():
+                    print(f"   ⚠ Conflict: {dest_path.name} already exists")
+                    failed_files.append(source_path.name)
+                    continue
                 
-                # Advance to next family
-                self.next_family()
-            else:
-                # Operation failed
-                print(f"✗ {message}")
+                try:
+                    shutil.move(str(source_path), str(dest_path))
+                    moved_files.append((source_path, dest_path))
+                    print(f"   ✓ Moved: {source_path.name}")
+                except Exception as e:
+                    print(f"   ✗ Failed: {source_path.name} - {e}")
+                    failed_files.append(source_path.name)
+            
+            if failed_files:
+                print(f"❌ Failed to move {len(failed_files)} files. Rolling back...")
+                # Rollback moved files
+                for source, dest in moved_files:
+                    try:
+                        shutil.move(str(dest), str(source))
+                        print(f"   ↩ Rolled back: {dest.name}")
+                    except Exception as e:
+                        print(f"   ✗ Rollback failed: {dest.name} - {e}")
+                
                 self.logger.log_error(
                     error_type="file_operation",
-                    message=message,
-                    context={'family': family.family_name}
+                    message=f"Failed to move {len(failed_files)} files",
+                    context={'family': family.family_name, 'failed': failed_files}
                 )
-                # Stay on current family, return to Stage A
+                
                 self.session.current_stage = "A"
                 self.stage_changed.emit("A")
+                return
+            
+            # SUCCESS - Update family metadata
+            print(f"✅ Successfully moved {len(moved_files)} files")
+            
+            # Update family source folder
+            family.source_folder = target_path
+            for i, style in enumerate(family.styles):
+                style.path = target_path / style.path.name
+            
+            # Log the action
+            self.logger.log_classification(
+                family_name=family.family_name,
+                from_path=str(family.source_folder),
+                to_path=str(target_path),
+                stage="B",
+                category=parent_folder,
+                subcategory=category_key
+            )
+            
+            # Mark as completed
+            self.session.completed_families.add(family.family_name)
+            
+            # Create action for undo
+            action = ClassificationAction(
+                timestamp=time.time(),
+                family_name=family.family_name,
+                from_path=family.source_folder,
+                to_path=target_path,
+                stage=Stage.B,
+                category_key=category_key,
+            )
+            self.command_stack.commands.append(action)
+            self.command_stack.current_index += 1
+            
+            # Clean up temp data
+            if hasattr(self.session, 'temp_stage_a_category'):
+                delattr(self.session, 'temp_stage_a_category')
+            
+            # Move to Stage A for next family
+            self.session.current_stage = "A"
+            self.stage_changed.emit("A")
+            
+            # Advance to next family
+            self.next_family()
     
     def skip_family(self):
         """Skip current family without classification"""
